@@ -1,0 +1,346 @@
+---
+title: "Exploratory Data Analysis"
+author: "STOR 320.01 Group 1"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(CGPfunctions)
+library(gridExtra)
+library(car)
+library(ggplot2)
+
+# Import Data Below
+library(openintro)
+```
+
+We tidied up our dataset below by removing columns that we aren't analyzing and filtering observations to only include individuals that are employed, so that our conclusions are only being made about the employed population.
+```{r}
+acs_tidy = acs12 %>% 
+  .[-c(8)] %>%
+  filter(employment == "employed") %>%
+  .[-c(2)]
+acs_tidy
+```
+
+
+# Creator: ANDREW YANG
+
+### Q1: What are the most relevant variables for predicting income?
+
+```{r}
+Full = lm(income~hrs_work + factor(race) + age + factor(gender) + factor(citizen) + factor(lang) + factor(married) + factor(edu) + factor(disability) + factor(birth_qrtr), data=acs_tidy)
+Step_mod = step(Full, scope=income ~ 1, direction='backward')
+```
+
+To find a parsimonious set of predictors with good explanatory power, we built a full equation with all of the relevant predictors. We then conducted a stepwise regression that iteratively added and removed predictors, in the predictive model, in order to find the subset of variables in the data set resulting in the best performing model. Ultimately, it was discovered that the best predicting model uses the following variables as predictors for income: hrs_work, race, age, gender, citizen, lang, married, edu, disability.
+
+
+### Q2: Is there a significant difference in income between the different education levels?
+
+```{r}
+AnovaByEdu = aov(income ~ factor(edu), data=acs_tidy)
+summary(AnovaByEdu)
+```
+
+```{r}
+plot(AnovaByEdu,1)
+plot(AnovaByEdu,2)
+```
+
+```{r}
+kruskal.test(income ~ edu, data = acs_tidy)
+```
+
+We can use built-in aov command to compute the one-way analysis of variance decomposition. Supplying the function with income(response) and the education group that we are testing. We next plot the residuals against fit and normal QQ plot to check the homogeneity and normality assumptions respectively. It appears there are heinous departures from the best-fit line, so it would seem that ANOVA is not a suitable way to proceed.
+
+Instead, we can conduct a Kruskal-Wallis rank sum test. Since the p-value is less than the significance level 0.05, we can reject the null hypothesis and conclude that there are significant differences between the education groups.
+
+
+# Interpreter: SOPHIA LIN
+
+### Q1: Out of employed people who report having disabilities, what is their income distribution and average income?
+
+```{r}
+disability = acs_tidy %>%
+  filter(disability=="yes") %>%
+  mutate(income=income/1000) %>%
+  subset(income<300)
+
+
+
+mean(disability$income)
+max(disability$income)
+
+ggplot(disability, aes(x=income)) +
+  geom_histogram(bins=50) +
+  xlab("income (USD, thousands") +
+  ylab("count") 
+
+```
+
+The mean income of employed people with disabilities is 29.27. The distribution of income for employed disabled people is very right skewed. This may be due to variations in types of disabilities and how they affect ability to work. There is an outlier of 333k, and after removing that value, the average income becomes 24.86. 
+
+### Q2: In 2012, middle class income is above $20,592 and below $104,087 , what are the most common characteristics of those considered middle class? what are the most common characteristics of those considered lower (less than $20,592) and upper class (higher than 104,087)?
+
+
+```{r}
+acs_class = acs_tidy %>%
+  mutate(class = as.factor(ifelse(income<20592, 'lower',
+                                ifelse(income<=104087, 'middle',
+                                ifelse(income>104087, 'upper', 0)))))
+ggplot(acs_class, aes(x=class)) +
+  geom_bar() 
+
+PlotXTabs(acs_class, class, hrs_work)
+PlotXTabs(acs_class, class, race)
+PlotXTabs(acs_class, class, age)
+PlotXTabs(acs_class, class, gender)
+PlotXTabs(acs_class, class, citizen)
+PlotXTabs(acs_class, class, lang)
+PlotXTabs(acs_class, class, married)
+PlotXTabs(acs_class, class, edu)
+PlotXTabs(acs_class, class, disability)
+PlotXTabs(acs_class, class, birth_qrtr)
+
+```
+
+The middle class represents the largest income class, with lower class as the next largest. the upper class is the smallest class by far. Crosstab allows us to examine for potential trends in the other variables by class. 
+- Out of all the race categories, middle class is the most common, and upper class the least common by far. notably, within Asian respondents, upper class is similar in frequency to lower class, a trend that doesnt exist in any of the other races. 
+- I noticed that within younger repondents, there are many more lower class than the other classes. 
+- lower class was the most common among the women, and middle class the most common among male respondents
+- out of married respondents, middle class is by far the most common, but lower class is the most common out of non married respondents
+- there is a positive correlation between class and education levels, and the gap between counts of middle and lower class increase with education level
+- the birth quarter with the highest amount of upper class respondents is jan-mar, which also has the lowest count of lower class respondents
+
+
+# Orator 1: GRACE SUN
+
+### Q1: Out of the people who worked full time (>=30 hours a week), is there a relationship between age and income? 
+
+```{r}
+acs_1 <- acs_tidy %>% filter(hrs_work>=30)
+head(acs_1)
+```
+
+```{r}
+ggplot(data = acs_1, aes(x=age, y=income)) + geom_point() + geom_smooth(method='lm')
+```
+
+From observing the graph above, it's clear that there is a weak positive relationship between age and income, which means that as age increases, income also increases. This could be due to the expectation that as individuals get older and have more years of experience in their field, they are able to receive raises and higher pay overall compared to younger individuals who are newer to their field.
+
+
+### Q2: Is there a specific race that has a significantly higher income than other races?
+
+First, I'll graph each race and their incomes.
+
+```{r}
+ggplot(data = acs_tidy, aes(x=race, y=income)) + geom_boxplot()
+```
+
+Visually, we can see that the Asian race has the highest median income, as well as the highest first and third quartile. However, the white group has a significant amount of outliers, thus this graph isn't sufficient to make a conclusion about if Asians have a significantly higher income than other races.
+
+```{r}
+acs_tidy_asian <- acs_tidy %>% filter(race=="asian")
+mean(acs_tidy_asian$income)
+
+acs_tidy_white <- acs_tidy %>% filter(race=="white")
+mean(acs_tidy_white$income)
+
+acs_tidy_black <- acs_tidy %>% filter(race=="black")
+mean(acs_tidy_black$income)
+
+acs_tidy_other <- acs_tidy %>% filter(race=="other")
+mean(acs_tidy_other$income)
+```
+
+Looking at the means of each group, we can also see that asians have the greatest mean income by a significant amount.
+
+Now, I'll check the conditions for ANOVA to check for differences in means.
+
+```{r}
+raceanova <- aov(income ~ race, data = acs_tidy)
+
+plot(raceanova,1)
+plot(raceanova,2)
+```
+
+With the large deviations from the Normal QQ plot on the extremes, we are unable to satisfy the normality condition, and when plotting the data in a histogram below, we can see that the data is extremely right skewed.
+
+```{r}
+ggplot(acs_tidy, aes(x= income)) + geom_histogram()
+```
+
+Instead, we will use the Kruskal-Wallis rank sum test to check for differences in means.
+
+```{r}
+kruskal.test(income ~ race, data = acs_tidy)
+```
+
+With a p-value of less than 0.05, we can reject the null hypothesis that the means of race are equal, and favor the alternative hypothesis that there is a significant difference between means of income by race. Although we are unable to conclude which groups are significantly different, it's clear that the asian race has a much higher income, and could possibly be the group that is causing the favor towards the alternative hypotheis.
+
+# Deliverer: MAXWELL PENG
+
+### Q1: What is the relationship between disability and the interaction between education and income?
+```{r}
+ggplot(acs_tidy) +
+  geom_point(aes(x=edu, y=income, col = disability), alpha = 0.5, position = "jitter")
+```
+
+On the graph, it seems that there are more observations in the hs or lower education category, and much fewer in the grad category. There seems to be a pretty consistent proportion of individuals with a disability and individuals without a disability in each education group, but it seems that as those without a disability have higher education, they tend to have a slightly increased income, but the same trend doesn't hold for those with disabilities, who have a pretty consistent income regardless of educaiton level.
+
+### Q2: What is the relationship between hours worked and other significant variables?
+```{r}
+plot1<-ggplot(acs_tidy,aes(x=hrs_work, y=income, group=1)) +
+  geom_point() + geom_smooth(method = lm)
+plot2<-ggplot(acs_tidy, aes(x=age, y=hrs_work, group=1)) +
+  geom_point() + geom_smooth(method = lm)
+plot3<-ggplot(acs_tidy) +
+  geom_boxplot(aes(x=hrs_work, y=gender))
+plot4<-ggplot(acs_tidy) +
+  geom_boxplot(aes(x=hrs_work, y=race))
+plot5<-ggplot(acs_tidy) +
+  geom_boxplot(aes(x=hrs_work, y=citizen))
+plot6<-ggplot(acs_tidy) +
+  geom_boxplot(aes(x=hrs_work, y=married))
+
+grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol=3)
+```
+As hr_work increases, income seems to also increase; this could be due to those that are paid hourly, thus more hours worked would produce more income. Furthermore, even those that are on a yearly salary could have higher salaries for harder jobs that require more hours to be worked.
+
+As age increases, hours worked very slightly increases, but stays nearly constant. This is a little surprising, as we'd expect younger folks who are new to the workforce to work more hours, and work less as they gain experience and become more efficient. However, this could be explained by the fact that there is a 40 hour work week expecation in the US, which could lead to a pretty consistent amount of hours worked as individuals age.
+
+The median hours worked for male and females is almost the same, but for females, the median is very close to the third quartile, while for men, it is very close to the first quartile. This means that a large group of males work more hours than females. This could be due to the societal expectation that men provide for their families, which may push them to work longer hours.
+
+The median hours worked for all races and citizen status' is very similar, sitting right around 40 hours. All boxes are pretty similar too, and this is most likely due to the American 40 hour work week standard expectation.
+
+Although the median hours worked for married and non married individuals is very similar, the median for married individuals is close to the first quartile, while the median for non married individuals is closer to the third quartile, which means a large group of married individuals work more hours than non married individuals. This could be because married folk are more likely to have children and more dependents, and may need to work more to support those people.
+
+# Orator 1: BRANDON GAVIOLA
+### Q1: Is there a significant difference between average income for each gender?
+```{r}
+acs12_ttest_gender <- t.test(income~gender,data=acs_tidy)
+print(acs12_ttest_gender)
+p1 <- ggplot(acs12, aes(x=gender, y=income)) + 
+  geom_boxplot()
+print(p1)
+```
+
+There is a significant difference between the average annual income between male and female employees (p-value=2.903e-13). The average annual income of males is $55887.23 while that of females is $29243.70. 
+
+
+### Q2: Do citizens work significantly more hours on average than non-citizens?
+```{r}
+acs12_ttest_citizen <- t.test(hrs_work~citizen,data=acs_tidy)
+print(acs12_ttest_citizen) 
+p2 <- ggplot(acs_tidy, aes(x=citizen, y=hrs_work)) + 
+  geom_boxplot()
+print(p2)
+```
+
+There is not a significant difference between the average number of hours worked by citizens and non-citizens (p-value=0.5928). The average number of hours worked by citizens is 38.98 hours while that of non-citizens is 38.09.
+
+
+# Follow-up Questions
+
+### New Questions Based Off Initial Investigation
+
+- Q1: Do any of the predictors in our full model exhibit collinearity with the response? If not, can we a build a linear regression model for each of the 3 best predictors for income and assess its linearity assumptions?
+- Q2: Following up with Interpreter #2, it appears that compared to other races, the Asian subgroup has a larger proportion of upper class observations.  Are there significant differences in the proportions of each income class within the different races? 
+- Q3: Are there significant differences in the proportions of each income class within the different education levels? 
+- Q4: There is a significant difference in the average income between male and female employees for the entire dataset. when grouped by race and gender, are the differences in average incomes also significant? 
+
+### Investigation of Follow-up Questions
+
+Our group decided to investigate Q1 and Q2 in further detail.
+
+SHOW AT LEAST 2 TABLES OR FIGURES BELOW THAT EXPLORE ANSWERS FOR THE QUESTIONS YOU ARE INVESTIGATING FURTHER.
+
+### Q1
+```{r}
+vif(Step_mod)
+```
+
+No predictor has a VIF value greater than 5 which suggests that there is no multicollinearity.
+
+```{r}
+library(leaps)
+# For all possible subsets of the predictors, show me the two best at each number of predictors
+# e.g. the best two single-variable models, the best two 2-variable models, best two 3-variable models etc. 
+all = regsubsets(income~., data = acs_tidy, nbest = 3)
+
+ShowSubsets=function(regout){
+    n = regout$nn
+    z = summary(regout)
+    p = rowSums(z$which)
+    q = as.data.frame(z$outmat)
+    q$Rsq = round(z$rsq,4)
+    q$AIC = round(n*log(z$rss/n) + 2*p + 1/n + n*log(2*pi), 2)
+    return(q)
+}
+
+ShowSubsets(all)
+```
+
+The 3 best predictors for income are edu, hrs_work, and gender. Let’s now plot a linear regression for each of the variables. 
+
+```{r}
+hrs_worklm = lm(income ~ hrs_work, data =acs_tidy)
+summary(hrs_worklm)
+edulm = lm(income ~ edu, data =acs_tidy)
+summary(edulm)
+genderlm = lm(income ~ gender, data =acs_tidy)
+summary(genderlm)
+```
+
+```{r}
+plot(income~hrs_work, data=acs_tidy)
+abline(hrs_worklm)
+plot(income~edu, data=acs_tidy)
+abline(edulm)
+plot(income~gender, data=acs_tidy)
+abline(genderlm)
+```
+
+Each of the plots can display a relatively linear trend comparing the predictor with the response. However, it is important to note that the highest R-squared value is 0.1504 from the linear model for edu, which can be interpreted as roughly 15% of the variability in income is explained by our model in education level. Since this is a low proportion, we shouldn’t rely on any single variable to be an accurate measure to predicting income. Rather, a model with greater dimensions would be better suited for predictive analysis.
+
+### Q2
+```{r}
+acs_tidy
+
+asianProp = nrow(acs_tidy[acs_tidy$race == "asian" & acs_tidy$income > 104087,])/nrow(acs_tidy[acs_tidy$race == "asian",])
+asianProp
+whiteProp = nrow(acs_tidy[acs_tidy$race == "white" & acs_tidy$income > 104087,])/nrow(acs_tidy[acs_tidy$race == "white",])
+whiteProp
+blackProp = nrow(acs_tidy[acs_tidy$race == "black" & acs_tidy$income > 104087,])/nrow(acs_tidy[acs_tidy$race == "black",])
+blackProp
+otherProp = nrow(acs_tidy[acs_tidy$race == "other" & acs_tidy$income > 104087,])/nrow(acs_tidy[acs_tidy$race == "other",])
+otherProp
+aw <- prop.test(x = c(nrow(acs_tidy[acs_tidy$race == "asian" & acs_tidy$income > 104087,]), nrow(acs_tidy[acs_tidy$race == "white" & acs_tidy$income > 104087,])), n = c(nrow(acs_tidy[acs_tidy$race == "asian",]), nrow(acs_tidy[acs_tidy$race == "white",])))
+aw 
+
+ab <- prop.test(x = c(nrow(acs_tidy[acs_tidy$race == "asian" & acs_tidy$income > 104087,]), nrow(acs_tidy[acs_tidy$race == "black" & acs_tidy$income > 104087,])), n = c(nrow(acs_tidy[acs_tidy$race == "asian",]), nrow(acs_tidy[acs_tidy$race == "black",])))
+ab
+
+ao <- prop.test(x = c(nrow(acs_tidy[acs_tidy$race == "asian" & acs_tidy$income > 104087,]), nrow(acs_tidy[acs_tidy$race == "other" & acs_tidy$income > 104087,])), n = c(nrow(acs_tidy[acs_tidy$race == "asian",]), nrow(acs_tidy[acs_tidy$race == "other",])))
+ao 
+
+race <- data.frame(Prop=c("Asian", "White", "Black", "Other"),
+                len=c(asianProp, whiteProp, blackProp, otherProp))
+head(race)
+p<-ggplot(data=race, aes(x=Prop, y=len)) +
+  geom_bar(stat="identity")
+p
+```
+
+All p-values after doing a prop test are under 0.05 so we reject the null and conclude that there is a difference in the proportions of upper income for Asians and other races. There is a clear distinction that Asians have a much higher percentage of upper class individuals compared to other races by lookinga the graph as well. 
+
+# Summary
+
+From investigating our initial 10 questions, we were able to grasp an understanding of some relationships between our variables, as well as notice some underlying issues and surprises in our dataset. Some relationships were discovered to be as expected due to preconceived ideas about income, such as the positive relationship between education level and income (as education increases, income increases), as well as the relationship between gender and income (females make less income than males). Some relationships were quite surprising, such as the asian race having a significantly higher mean than the other races, even as a minority in the population. We were surprised to see that the normality condition for ANOVA was not met because our data is right skewed and has an unusually large amount of outliers, which could be explained by the observations of individuals who are in extremely high paying jobs that are rare, such as CEO, or actor. We were able to create follow up questions by examining all of our questions and results as a whole, with an emphasis on combining more predictors together when looking at our income response variable. Our initial investigation was able to give us a broad understanding of the dataset as a whole, and future further analysis will allow us to dive deeper into factors that affect an individuals income.
+
+From our investigation of the follow up questions, we can conclude that we would be able to generate a pretty strong model to predict income based on education levels, hrs worked, and gender. A stepwise regression showed that these three variables are the best predictors of income, and linear regression plots of each of these show how the individual predictors perform on our data. This is consistent with what we would expect based on prior knowledge, but we are interested in seeing how accurate our model would predict these data. Knowing that the proportion of the upper income class is highest within the Asian race, we wanted to investigate how that proportion compared to those of the same income class within each race in the dataset. Specifically, we wanted to test whether the differences between the proportion of the upper income class within the Asian race and those of other groups were significant. To answer this question, proportion tests were performed. Each test returned a p-value of less than 0.05, indicating that the differences between the proportion of the upper income class within the Asian race and those of other groups are significant. These differences are evident in the bar chart above, with the Asian race having the greatest percentage among the other races. 
